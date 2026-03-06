@@ -4,21 +4,24 @@ from decimal import Decimal
 
 from sqlalchemy import text
 
-
-from src.settings import PostgresSettings
 from src.db_models import OrderModel, OrderPaymentStatus
+from src.settings import PostgresSettings
 
 
 def random_amount():
     return Decimal(random.randint(100, 5000))
 
+
 async def truncate_orders():
     async with PostgresSettings.get_session()() as session:
         # Выполняем TRUNCATE команду
-        await session.execute(text(f'TRUNCATE TABLE {OrderModel.__tablename__} RESTART IDENTITY CASCADE'))
+        await session.execute(
+            text(f"TRUNCATE TABLE {OrderModel.__tablename__} RESTART IDENTITY CASCADE")
+        )
         await session.commit()
-    
+
     print("Таблица orders успешно очищена")
+
 
 async def seed_orders(n: int = 20):
     async with PostgresSettings.get_session()() as session:
@@ -26,8 +29,7 @@ async def seed_orders(n: int = 20):
 
         for _ in range(n):
             order = OrderModel(
-                amount=random_amount(),
-                payment_status=OrderPaymentStatus.UNPAID
+                amount=random_amount(), payment_status=OrderPaymentStatus.UNPAID
             )
             orders.append(order)
 

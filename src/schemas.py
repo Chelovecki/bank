@@ -7,10 +7,7 @@ from src.db_models import OrderPaymentStatus, PaymentStatus, PaymentType
 
 
 class BaseSchema(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True,
-        extra='forbid'
-    )
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
 class PaymentSchema(BaseSchema):

@@ -20,16 +20,10 @@ class BaseService:
             if offset is None:
                 offset = 0
 
-            statement = (
-                select(type_model)
-                .
-                limit(size)
-                .offset(offset)
-            )
+            statement = select(type_model).limit(size).offset(offset)
 
             if type_model == OrderModel:
-                statement = statement.options(
-                    selectinload(OrderModel.payments))
+                statement = statement.options(selectinload(OrderModel.payments))
 
             return statement
 

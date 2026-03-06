@@ -1,4 +1,3 @@
-
 from typing import Sequence
 
 from sqlalchemy import select
@@ -23,12 +22,10 @@ class OrderServices(BaseService):
 
             if order is None:
                 return None
-            query = select(PaymentModel).where(
-                PaymentModel.order_id == order_id)
+            query = select(PaymentModel).where(PaymentModel.order_id == order_id)
             result = await session.execute(query)
-            payments = result.scalars().all()
 
-            return payments
+            return result.scalars().all()
 
 
 order_services = OrderServices(PostgresSettings.get_session())

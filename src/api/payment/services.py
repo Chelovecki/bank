@@ -1,6 +1,6 @@
 from decimal import Decimal
-from sqlalchemy import select
 
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from src.db_models import OrderModel, OrderPaymentStatus, PaymentModel, PaymentStatus
@@ -12,22 +12,19 @@ class PaymentServices(BaseService):
     def __init__(self, session):
         super().__init__(session)
 
-    def _calculate_order_status(self, order_amount: Decimal, payments: list[PaymentModel]) -> OrderPaymentStatus:
+    def _calculate_order_status(
+        self, order_amount: Decimal, payments: list[PaymentModel]
+    ) -> OrderPaymentStatus:
         """Вычисляет статус заказа на основе всех платежей"""
         net_paid = sum(
-            p.amount for p in payments
-            if p.status == PaymentStatus.COMPLETED
-        ) - sum(
-            p.amount for p in payments
-            if p.status == PaymentStatus.REFUNDED
-        )
+            p.amount for p in payments if p.status == PaymentStatus.COMPLETED
+        ) - sum(p.amount for p in payments if p.status == PaymentStatus.REFUNDED)
 
         if net_paid <= 0:
             return OrderPaymentStatus.UNPAID
-        elif net_paid >= order_amount:
+        if net_paid >= order_amount:
             return OrderPaymentStatus.PAID
-        else:
-            return OrderPaymentStatus.PARTIALLY_PAID
+        return OrderPaymentStatus.PARTIALLY_PAID
 
     async def update_status(self, payment: PaymentModel, order_id: int):
         async with self.session_factory() as session:
@@ -45,19 +42,18 @@ class PaymentServices(BaseService):
 
             # Обновляем статус на основе всех платежей
             order.payment_status = self._calculate_order_status(
-                order.amount, order.payments)
+                order.amount, order.payments
+            )
 
             session.add(order)
             await session.commit()
 
             return True
 
-    async def create_payment(self, order_id: int, amount: Decimal, type: str) -> PaymentModel:
-        payment = PaymentModel(
-            order_id=order_id,
-            amount=amount,
-            type=type
-        )
+    async def create_payment(
+        self, order_id: int, amount: Decimal, type: str
+    ) -> PaymentModel:
+        payment = PaymentModel(order_id=order_id, amount=amount, type=type)
         if payment.type == "CASH":
             payment.status = PaymentStatus.COMPLETED
 
