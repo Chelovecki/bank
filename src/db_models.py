@@ -80,7 +80,7 @@ class PaymentModel(Base):
         TIMESTAMP(timezone=True),
         server_default=func.now()
     )
-
+    # relations
     order_id: Mapped[int] = mapped_column(
         ForeignKey('orders.id', ondelete='CASCADE'),
         index=True

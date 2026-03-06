@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
-from db_models import OrderPaymentStatus, PaymentStatus, PaymentType
+from src.db_models import OrderPaymentStatus, PaymentStatus, PaymentType
 
 
 class BaseSchema(BaseModel):
