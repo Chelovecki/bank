@@ -14,4 +14,38 @@ dependencies = [
     "pydantic>=2.12.5",
     "redis>=7.2.1",
     "sqlalchemy>=2.0.48",
+    "uvicorn>=0.41.0",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.5",
+]
+
+[tool.ruff]
+line-length = 88
+exclude = [
+    "src/migrations",
+]
+
+lint.fixable = ["ALL"]
+lint.select = [
+    "E",  # All errors
+    "W",  # All warnings
+    "PIE",  # All flake8-pie
+    "RET",  # All flake8-return
+    "PLE",  # All Errors from Pylint
+    "F401",  # unused-import
+    "F541",  # f-string-missing-placeholders
+    "F841",  # unused-variable
+    "I001",  # isort: unsorted-imports
+    "I002",  # isort: missing-required-import
+    ]
+
+[tool.ruff.lint.isort]
+known-first-party = ["smartcms"]
+known-third-party = ["pydantic", "fastapi", "sqlalchemy", "asyncpg", "jinja2"]
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
