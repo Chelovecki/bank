@@ -1,90 +1,253 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from src.db_models import OrderModel, OrderPaymentStatus, PaymentModel, PaymentStatus
+from src.api.bank_client import (
+    BankApiError,
+    BankClient,
+    BankPaymentNotFoundError,
+    BankPaymentState,
+)
+from src.db_models import (
+    OrderModel,
+    OrderPaymentStatus,
+    PaymentModel,
+    PaymentStatus,
+    PaymentType,
+)
 from src.services import BaseService
-from src.settings import PostgresSettings
+from src.settings import BankApiSettings, PostgresSettings
+
+
+class PaymentError(Exception):
+    pass
+
+
+class OrderNotFoundError(PaymentError):
+    pass
+
+
+class PaymentNotFoundError(PaymentError):
+    pass
+
+
+class AmountExceedsOrderError(PaymentError):
+    pass
+
+
+class InvalidPaymentStateError(PaymentError):
+    pass
+
+
+class InvalidPaymentTypeError(PaymentError):
+    pass
+
+
+class BankDataMismatchError(PaymentError):
+    pass
 
 
 class PaymentServices(BaseService):
-    def __init__(self, session):
+    def __init__(self, session, bank_client: BankClient):
         super().__init__(session)
+        self.bank_client = bank_client
 
+    @staticmethod
     def _calculate_order_status(
-        self, order_amount: Decimal, payments: list[PaymentModel]
+        order_amount: Decimal, payments: list[PaymentModel]
     ) -> OrderPaymentStatus:
-        """Вычисляет статус заказа на основе всех платежей"""
-        net_paid = sum(
-            p.amount for p in payments if p.status == PaymentStatus.COMPLETED
-        ) - sum(p.amount for p in payments if p.status == PaymentStatus.REFUNDED)
-
-        if net_paid <= 0:
+        paid_amount = sum(
+            payment.amount
+            for payment in payments
+            if payment.status == PaymentStatus.COMPLETED
+        )
+        if paid_amount <= 0:
             return OrderPaymentStatus.UNPAID
-        if net_paid >= order_amount:
+        if paid_amount >= order_amount:
             return OrderPaymentStatus.PAID
         return OrderPaymentStatus.PARTIALLY_PAID
 
-    async def update_status(self, payment: PaymentModel, order_id: int):
+    @staticmethod
+    def _reserved_amount(payments: list[PaymentModel]) -> Decimal:
+        return sum(
+            payment.amount
+            for payment in payments
+            if payment.status in {PaymentStatus.PENDING, PaymentStatus.COMPLETED}
+        )
+
+    async def _update_order_status(self, session, order: OrderModel) -> None:
+        order.payment_status = self._calculate_order_status(
+            order.amount,
+            order.payments,
+        )
+        session.add(order)
+
+    async def create_payment(
+        self, order_id: int, amount: Decimal, payment_type: PaymentType
+    ) -> PaymentModel:
         async with self.session_factory() as session:
-            # Загружаем заказ с платежами
-            query = (
+            statement = (
                 select(OrderModel)
                 .where(OrderModel.id == order_id)
                 .options(selectinload(OrderModel.payments))
+                .with_for_update()
             )
-            result = await session.execute(query)
+            result = await session.execute(statement)
             order = result.scalar_one_or_none()
 
-            if not order:
-                return False
+            if order is None:
+                raise OrderNotFoundError
 
-            # Обновляем статус на основе всех платежей
-            order.payment_status = self._calculate_order_status(
-                order.amount, order.payments
+            if amount <= 0:
+                raise ValueError("payment amount must be greater than zero")
+
+            reserved = self._reserved_amount(order.payments)
+            if reserved + amount > order.amount:
+                raise AmountExceedsOrderError
+
+            payment = PaymentModel(
+                order=order,
+                amount=amount,
+                type=payment_type,
+                status=PaymentStatus.PENDING,
             )
-
-            session.add(order)
-            await session.commit()
-
-            return True
-
-    async def create_payment(
-        self, order_id: int, amount: Decimal, type: str
-    ) -> PaymentModel:
-        payment = PaymentModel(order_id=order_id, amount=amount, type=type)
-        if payment.type == "CASH":
-            payment.status = PaymentStatus.COMPLETED
-
-        async with self.session_factory() as session:
             session.add(payment)
+
+            if payment_type == PaymentType.CASH:
+                payment.status = PaymentStatus.COMPLETED
+            elif payment_type == PaymentType.ACQUIRING:
+                bank_payment_id = await self.bank_client.acquiring_start(
+                    order_id,
+                    amount,
+                )
+                payment.bank_payment_id = bank_payment_id
+                payment.bank_status = BankPaymentState.PENDING.value
+                payment.bank_checked_at = datetime.now(timezone.utc)
+            else:
+                raise InvalidPaymentTypeError
+
+            await self._update_order_status(session, order)
             await session.commit()
             await session.refresh(payment)
-            await self.update_status(payment, order_id)
             return payment
 
     async def get_payment(self, payment_id: int) -> PaymentModel | None:
         async with self.session_factory() as session:
-            query = select(PaymentModel).where(PaymentModel.id == payment_id)
-            result = await session.execute(query)
-            return result.scalar_one_or_none()
+            return await session.get(PaymentModel, payment_id)
 
-    async def refund_payment(self, payment_id: int) -> PaymentModel | None:
+    async def refund_payment(self, payment_id: int) -> PaymentModel:
         async with self.session_factory() as session:
-            payment = await session.get(PaymentModel, payment_id)
-
-            if not payment or payment.status != PaymentStatus.COMPLETED:
-                return None
+            statement = (
+                select(PaymentModel)
+                .where(PaymentModel.id == payment_id)
+                .options(selectinload(PaymentModel.order).selectinload(OrderModel.payments))
+            )
+            result = await session.execute(statement)
+            payment = result.scalar_one_or_none()
+            if payment is None:
+                raise PaymentNotFoundError
+            if payment.status != PaymentStatus.COMPLETED:
+                raise InvalidPaymentStateError(
+                    "only completed payments can be refunded"
+                )
 
             payment.status = PaymentStatus.REFUNDED
+            payment.bank_status = "REFUNDED"
+            payment.bank_checked_at = datetime.now(timezone.utc)
             session.add(payment)
+
+            if payment.order is None:
+                raise OrderNotFoundError
+
+            await self._update_order_status(session, payment.order)
             await session.commit()
             await session.refresh(payment)
-
-            await self.update_status(payment, payment.order_id)
-
             return payment
 
+    async def sync_payment_with_bank(self, payment_id: int) -> PaymentModel:
+        async with self.session_factory() as session:
+            statement = (
+                select(PaymentModel)
+                .where(PaymentModel.id == payment_id)
+                .options(selectinload(PaymentModel.order).selectinload(OrderModel.payments))
+            )
+            result = await session.execute(statement)
+            payment = result.scalar_one_or_none()
+            if payment is None:
+                raise PaymentNotFoundError
+            if payment.type != PaymentType.ACQUIRING:
+                raise InvalidPaymentTypeError(
+                    "sync is available only for acquiring payments"
+                )
+            if not payment.bank_payment_id:
+                raise InvalidPaymentStateError(
+                    "acquiring payment has no bank payment id"
+                )
 
-payment_services = PaymentServices(PostgresSettings.get_session())
+            bank_state = await self.bank_client.acquiring_check(payment.bank_payment_id)
+            if bank_state.amount != payment.amount:
+                raise BankDataMismatchError
+
+            payment.bank_status = bank_state.status.value
+            payment.bank_checked_at = datetime.now(timezone.utc)
+            payment.bank_paid_at = bank_state.paid_at
+
+            if bank_state.status == BankPaymentState.PAID:
+                payment.status = PaymentStatus.COMPLETED
+            elif bank_state.status == BankPaymentState.FAILED:
+                if payment.status == PaymentStatus.COMPLETED:
+                    raise BankDataMismatchError
+                payment.status = PaymentStatus.REFUNDED
+            else:
+                payment.status = PaymentStatus.PENDING
+
+            session.add(payment)
+
+            if payment.order is None:
+                raise OrderNotFoundError
+            await self._update_order_status(session, payment.order)
+            await session.commit()
+            await session.refresh(payment)
+            return payment
+
+    async def sync_order_acquiring_payments(self, order_id: int) -> list[PaymentModel]:
+        async with self.session_factory() as session:
+            statement = (
+                select(OrderModel)
+                .where(OrderModel.id == order_id)
+                .options(selectinload(OrderModel.payments))
+            )
+            result = await session.execute(statement)
+            order = result.scalar_one_or_none()
+            if order is None:
+                raise OrderNotFoundError
+
+            acquiring_payments = [
+                payment
+                for payment in order.payments
+                if payment.type == PaymentType.ACQUIRING
+                and payment.status in {PaymentStatus.PENDING, PaymentStatus.COMPLETED}
+            ]
+
+        synced_payments: list[PaymentModel] = []
+        for payment in acquiring_payments:
+            try:
+                synced = await self.sync_payment_with_bank(payment.id)
+                synced_payments.append(synced)
+            except (BankPaymentNotFoundError, BankApiError):
+                continue
+
+        return synced_payments
+
+
+bank_client = BankClient(
+    base_url=BankApiSettings.BASE_URL,
+    timeout_seconds=BankApiSettings.TIMEOUT_SECONDS,
+    retries=BankApiSettings.RETRIES,
+)
+payment_services = PaymentServices(
+    PostgresSettings.get_session(),
+    bank_client=bank_client,
+)

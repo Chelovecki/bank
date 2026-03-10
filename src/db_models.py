@@ -69,6 +69,13 @@ class PaymentModel(Base):
     bank_payment_id: Mapped[str | None] = mapped_column(
         String(100), nullable=True, index=True
     )
+    bank_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    bank_checked_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    bank_paid_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now()

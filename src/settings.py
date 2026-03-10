@@ -29,3 +29,9 @@ class PostgresSettings:
             expire_on_commit=False,
             autoflush=False,
         )
+
+
+class BankApiSettings:
+    BASE_URL = os.getenv("BANK_API_BASE_URL", "https://bank.api")
+    TIMEOUT_SECONDS = float(os.getenv("BANK_API_TIMEOUT_SECONDS", "5"))
+    RETRIES = int(os.getenv("BANK_API_RETRIES", "2"))
