@@ -1,0 +1,18 @@
+services:
+  tests:
+    image: python:3.13-slim
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - PYTHONPATH=/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../:/app
+    command: >
+      sh -c "python -m pip install --no-cache-dir uv &&
+      UV_PROJECT_ENVIRONMENT=/tmp/.venv uv sync --dev &&
+      UV_PROJECT_ENVIRONMENT=/tmp/.venv uv run pytest -q"
