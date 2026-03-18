@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     BANK_API_TIMEOUT_SECONDS: float = 5
     BANK_API_RETRIES: int = 2
 
+    # Celery settings
+    CELERY_BROKER_URL: str = "redis://redis:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://redis:6379/1"
+    CELERY_POLL_PENDING_PAYMENTS_INTERVAL_SECONDS: int = 30
+
     @computed_field
     @property
     def ASYNC_URL(self) -> str:

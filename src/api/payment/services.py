@@ -2,12 +2,12 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 
 from src.api.bank_client import (
     BankClient,
     BankClientProtocol,
-    BankPaymentNotFoundError,
     BankPaymentState,
 )
 from src.api.bank_client_exceptions import BankApiError, BankPaymentNotFoundError
@@ -247,6 +247,37 @@ class PaymentServices(BaseService):
                 continue
 
         return synced_payments
+
+    async def sync_pending_acquiring_payments(self) -> int:
+        try:
+            async with self.session_factory() as session:
+                statement = select(PaymentModel.id).where(
+                    PaymentModel.type == PaymentType.ACQUIRING,
+                    PaymentModel.status == PaymentStatus.PENDING,
+                    PaymentModel.bank_payment_id.is_not(None),
+                )
+                result = await session.execute(statement)
+                payment_ids = list(result.scalars().all())
+        except SQLAlchemyError:
+            return 0
+
+        synced_count = 0
+        for payment_id in payment_ids:
+            try:
+                await self.sync_payment_with_bank(payment_id)
+                synced_count += 1
+            except (
+                PaymentNotFoundError,
+                InvalidPaymentTypeError,
+                InvalidPaymentStateError,
+                BankPaymentNotFoundError,
+                BankApiError,
+                BankDataMismatchError,
+                SQLAlchemyError,
+            ):
+                continue
+
+        return synced_count
 
 
 bank_client = BankClient(
