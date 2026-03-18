@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from src.api.bank_client import (
     BankApiError,
     BankClient,
+    BankClientProtocol,
     BankPaymentNotFoundError,
     BankPaymentState,
 )
@@ -18,7 +19,7 @@ from src.db_models import (
     PaymentType,
 )
 from src.services import BaseService
-from src.settings import BankApiSettings, PostgresSettings
+from src.settings import settings
 
 
 class PaymentError(Exception):
@@ -50,9 +51,9 @@ class BankDataMismatchError(PaymentError):
 
 
 class PaymentServices(BaseService):
-    def __init__(self, session, bank_client: BankClient):
+    def __init__(self, session, bank_client: BankClientProtocol):
         super().__init__(session)
-        self.bank_client = bank_client
+        self.bank_client: BankClientProtocol = bank_client
 
     @staticmethod
     def _calculate_order_status(
@@ -141,9 +142,7 @@ class PaymentServices(BaseService):
         async with self.session_factory() as session:
             payment = await session.get(PaymentModel, payment_id)
             order = await session.get(
-                OrderModel,
-                order_id,
-                options=(selectinload(OrderModel.payments),)
+                OrderModel, order_id, options=(selectinload(OrderModel.payments),)
             )
             if payment is None or order is None:
                 raise PaymentNotFoundError
@@ -155,7 +154,6 @@ class PaymentServices(BaseService):
             await session.refresh(payment)
             return payment
 
-
     async def get_payment(self, payment_id: int) -> PaymentModel | None:
         async with self.session_factory() as session:
             return await session.get(PaymentModel, payment_id)
@@ -165,7 +163,9 @@ class PaymentServices(BaseService):
             statement = (
                 select(PaymentModel)
                 .where(PaymentModel.id == payment_id)
-                .options(selectinload(PaymentModel.order).selectinload(OrderModel.payments))
+                .options(
+                    selectinload(PaymentModel.order).selectinload(OrderModel.payments)
+                )
             )
             result = await session.execute(statement)
             payment = result.scalar_one_or_none()
@@ -194,7 +194,9 @@ class PaymentServices(BaseService):
             statement = (
                 select(PaymentModel)
                 .where(PaymentModel.id == payment_id)
-                .options(selectinload(PaymentModel.order).selectinload(OrderModel.payments))
+                .options(
+                    selectinload(PaymentModel.order).selectinload(OrderModel.payments)
+                )
             )
             result = await session.execute(statement)
             payment = result.scalar_one_or_none()
@@ -266,11 +268,11 @@ class PaymentServices(BaseService):
 
 
 bank_client = BankClient(
-    base_url=BankApiSettings.BASE_URL,
-    timeout_seconds=BankApiSettings.TIMEOUT_SECONDS,
-    retries=BankApiSettings.RETRIES,
+    base_url=settings.BANK_API_BASE_URL,
+    timeout_seconds=settings.BANK_API_TIMEOUT_SECONDS,
+    retries=settings.BANK_API_RETRIES,
 )
 payment_services = PaymentServices(
-    PostgresSettings.get_session(),
+    settings.get_db_session(),
     bank_client=bank_client,
 )

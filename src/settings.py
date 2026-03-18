@@ -1,37 +1,51 @@
-import os
+from typing import Optional
 
-from dotenv import load_dotenv
+from pydantic import computed_field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-load_dotenv("docker/.env")
 
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file="docker/.env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+    # Postgres settings
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_DB: str = "bank"
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = "password"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DATABASE_URL: Optional[str] = None
 
-class PostgresSettings:
-    HOST = os.getenv("POSTGRES_HOST", "localhost")
-    DB = os.getenv("POSTGRES_DB")
-    USER = os.getenv("POSTGRES_USER")
-    PASSWORD = os.getenv("POSTGRES_PASSWORD")
-    PORT = int(os.getenv("POSTGRES_PORT"))  # type: ignore
-    ASYNC_URL = f"postgresql+asyncpg://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+    # Bank API settings
+    BANK_API_BASE_URL: str = "https://bank.api"
+    BANK_API_TIMEOUT_SECONDS: float = 5
+    BANK_API_RETRIES: int = 2
 
-    @classmethod
-    def get_session(cls):
-        async_engine = create_async_engine(
-            cls.ASYNC_URL,
+    @computed_field
+    @property
+    def ASYNC_URL(self) -> str:
+        """Генерирует URL для подключения к БД"""
+        if self.POSTGRES_DATABASE_URL:
+            return self.POSTGRES_DATABASE_URL
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
+    def get_db_session(self):
+        """Создает фабрику сессий для БД"""
+        engine = create_async_engine(
+            self.ASYNC_URL,
             echo=True,
             pool_size=20,
             max_overflow=40,
         )
-
         return async_sessionmaker(
-            bind=async_engine,
+            bind=engine,
             class_=AsyncSession,
             expire_on_commit=False,
             autoflush=False,
         )
 
 
-class BankApiSettings:
-    BASE_URL = os.getenv("BANK_API_BASE_URL", "https://bank.api")
-    TIMEOUT_SECONDS = float(os.getenv("BANK_API_TIMEOUT_SECONDS", "5"))
-    RETRIES = int(os.getenv("BANK_API_RETRIES", "2"))
+settings = Settings()

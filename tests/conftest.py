@@ -11,7 +11,7 @@ from src.api.orders.services import order_services
 from src.api.payment.services import payment_services
 from src.db_models import Base, OrderModel, OrderPaymentStatus, PaymentType
 from src.main import app
-from src.settings import PostgresSettings
+from src.settings import settings
 
 
 class FakeBankClient:
@@ -40,9 +40,7 @@ class FakeBankClient:
         status: BankPaymentState,
     ) -> None:
         paid_at = (
-            datetime.now(timezone.utc)
-            if status == BankPaymentState.PAID
-            else None
+            datetime.now(timezone.utc) if status == BankPaymentState.PAID else None
         )
         self._states[bank_payment_id] = BankCheckResult(
             bank_payment_id=bank_payment_id,
@@ -54,7 +52,7 @@ class FakeBankClient:
 
 @pytest_asyncio.fixture()
 async def session_factory() -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
-    engine = create_async_engine(PostgresSettings.ASYNC_URL, future=True)
+    engine = create_async_engine(settings.ASYNC_URL, future=True)
     factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
 
     async with engine.begin() as conn:

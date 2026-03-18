@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from src.db_models import OrderModel, PaymentModel
 from src.services import BaseService
-from src.settings import PostgresSettings
+from src.settings import settings
 
 
 class OrderServices(BaseService):
@@ -28,4 +28,4 @@ class OrderServices(BaseService):
             return result.scalars().all()
 
 
-order_services = OrderServices(PostgresSettings.get_session())
+order_services = OrderServices(settings.get_db_session())

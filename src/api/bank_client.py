@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import StrEnum
+from typing import Protocol
 
 from httpx import AsyncClient, HTTPError, TimeoutException
 from pydantic import BaseModel, ConfigDict
@@ -35,6 +36,12 @@ class BankCheckResult(BaseModel):
     amount: Decimal
     status: BankPaymentState
     paid_at: datetime | None = None
+
+
+class BankClientProtocol(Protocol):
+    async def acquiring_start(self, order_id: int, amount: Decimal) -> str: ...
+
+    async def acquiring_check(self, bank_payment_id: str) -> BankCheckResult: ...
 
 
 class BankClient:
