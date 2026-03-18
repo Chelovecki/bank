@@ -142,7 +142,8 @@ class PaymentServices(BaseService):
         async with self.session_factory() as session:
             payment = await session.get(PaymentModel, payment_id)
             order = await session.get(
-                OrderModel, order_id, options=(selectinload(OrderModel.payments),)
+                OrderModel, order_id, options=(
+                    selectinload(OrderModel.payments),)
             )
             if payment is None or order is None:
                 raise PaymentNotFoundError
@@ -164,8 +165,10 @@ class PaymentServices(BaseService):
                 select(PaymentModel)
                 .where(PaymentModel.id == payment_id)
                 .options(
-                    selectinload(PaymentModel.order).selectinload(OrderModel.payments)
+                    selectinload(PaymentModel.order).selectinload(
+                        OrderModel.payments)
                 )
+                .with_for_update()
             )
             result = await session.execute(statement)
             payment = result.scalar_one_or_none()
@@ -195,8 +198,10 @@ class PaymentServices(BaseService):
                 select(PaymentModel)
                 .where(PaymentModel.id == payment_id)
                 .options(
-                    selectinload(PaymentModel.order).selectinload(OrderModel.payments)
+                    selectinload(PaymentModel.order).selectinload(
+                        OrderModel.payments)
                 )
+                .with_for_update()
             )
             result = await session.execute(statement)
             payment = result.scalar_one_or_none()
