@@ -31,8 +31,7 @@ class BankCheckResult(BaseModel):
 class BankClientProtocol(Protocol):
     async def acquiring_start(self, order_id: int, amount: Decimal) -> str: ...
 
-    async def acquiring_check(
-        self, bank_payment_id: str) -> BankCheckResult: ...
+    async def acquiring_check(self, bank_payment_id: str) -> BankCheckResult: ...
 
 
 class BankClient:
@@ -63,8 +62,7 @@ class BankClient:
 
         try:
             paid_at_raw = data.get("paid_at")
-            paid_at = datetime.fromisoformat(
-                paid_at_raw) if paid_at_raw else None
+            paid_at = datetime.fromisoformat(paid_at_raw) if paid_at_raw else None
             if paid_at and paid_at.tzinfo is None:
                 paid_at = paid_at.replace(tzinfo=timezone.utc)
             amount = Decimal(str(data.get("amount")))
@@ -74,8 +72,7 @@ class BankClient:
             ) from exc
 
         return BankCheckResult(
-            bank_payment_id=str(data.get("bank_payment_id")
-                                or bank_payment_id),
+            bank_payment_id=str(data.get("bank_payment_id") or bank_payment_id),
             amount=amount,
             status=status,
             paid_at=paid_at,
@@ -101,19 +98,16 @@ class BankClient:
 
                 body = response.json()
                 if not isinstance(body, dict):
-                    raise BankPermanentError(
-                        "bank API returned non-JSON object")
+                    raise BankPermanentError("bank API returned non-JSON object")
                 return body
             except BankTemporaryError as exc:
                 last_error = exc
             except TimeoutException:
                 last_error = BankTemporaryError("bank API timeout")
             except HTTPError as exc:
-                last_error = BankTemporaryError(
-                    f"bank API transport error: {exc}")
+                last_error = BankTemporaryError(f"bank API transport error: {exc}")
             except ValueError as exc:
-                raise BankPermanentError(
-                    f"invalid bank API response: {exc}") from exc
+                raise BankPermanentError(f"invalid bank API response: {exc}") from exc
 
         if last_error is not None:
             raise last_error
