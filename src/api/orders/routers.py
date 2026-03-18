@@ -1,3 +1,4 @@
+from alembic.util import status
 from fastapi import APIRouter, HTTPException, Path
 
 from src.api.bank_client import BankApiError
@@ -46,7 +47,7 @@ async def get_order_payments(order_id: int) -> OrderWithPaymentsSchema | None:
     return None
 
 
-@orders_router.post("/{order_id}/payments")
+@orders_router.post("/{order_id}/payments", status_code=status.HTTP_201_CREATED)
 async def create_order_payment(
     form_data: PaymentCreateSchema,
     order_id: int = Path(..., ge=1),
