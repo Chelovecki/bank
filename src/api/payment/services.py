@@ -75,7 +75,7 @@ class PaymentServices(BaseService):
             payment.amount
             for payment in payments
             if payment.status in {PaymentStatus.PENDING, PaymentStatus.COMPLETED}
-        )
+        )  # type: ignore
 
     async def _update_order_status(self, session, order: OrderModel) -> None:
         order.payment_status = self._calculate_order_status(
@@ -113,25 +113,48 @@ class PaymentServices(BaseService):
                 type=payment_type,
                 status=PaymentStatus.PENDING,
             )
-            session.add(payment)
 
             if payment_type == PaymentType.CASH:
                 payment.status = PaymentStatus.COMPLETED
-            elif payment_type == PaymentType.ACQUIRING:
-                bank_payment_id = await self.bank_client.acquiring_start(
-                    order_id,
-                    amount,
-                )
-                payment.bank_payment_id = bank_payment_id
-                payment.bank_status = BankPaymentState.PENDING.value
-                payment.bank_checked_at = datetime.now(timezone.utc)
-            else:
+                session.add(payment)
+                await self._update_order_status(session, order)
+                await session.commit()
+                await session.refresh(payment)
+                return payment
+
+            if payment_type != PaymentType.ACQUIRING:
                 raise InvalidPaymentTypeError
 
+            payment.bank_status = BankPaymentState.PENDING.value
+            payment.bank_checked_at = datetime.now(timezone.utc)
+
+            session.add(payment)
+            await session.commit()
+            await session.refresh(payment)
+            payment_id = payment.id
+
+        bank_payment_id = await self.bank_client.acquiring_start(
+            order_id,
+            amount,
+        )
+
+        async with self.session_factory() as session:
+            payment = await session.get(PaymentModel, payment_id)
+            order = await session.get(
+                OrderModel,
+                order_id,
+                options=(selectinload(OrderModel.payments),)
+            )
+            if payment is None or order is None:
+                raise PaymentNotFoundError
+
+            payment.bank_payment_id = bank_payment_id
+            session.add(payment)
             await self._update_order_status(session, order)
             await session.commit()
             await session.refresh(payment)
             return payment
+
 
     async def get_payment(self, payment_id: int) -> PaymentModel | None:
         async with self.session_factory() as session:
