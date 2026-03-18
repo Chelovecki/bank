@@ -36,7 +36,7 @@ class Settings(BaseSettings):
         """Создает фабрику сессий для БД"""
         engine = create_async_engine(
             self.ASYNC_URL,
-            echo=True,
+            echo=False,
             pool_size=20,
             max_overflow=40,
         )
