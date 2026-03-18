@@ -5,11 +5,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from src.api.bank_client import (
-    BankApiError,
     BankClient,
     BankClientProtocol,
     BankPaymentNotFoundError,
     BankPaymentState,
+)
+from src.api.bank_client_exceptions import BankApiError, BankPaymentNotFoundError
+from src.api.payment.exceptions import (
+    AmountExceedsOrderError,
+    BankDataMismatchError,
+    InvalidPaymentStateError,
+    InvalidPaymentTypeError,
+    OrderNotFoundError,
+    PaymentNotFoundError,
 )
 from src.db_models import (
     OrderModel,
@@ -20,34 +28,6 @@ from src.db_models import (
 )
 from src.services import BaseService
 from src.settings import settings
-
-
-class PaymentError(Exception):
-    pass
-
-
-class OrderNotFoundError(PaymentError):
-    pass
-
-
-class PaymentNotFoundError(PaymentError):
-    pass
-
-
-class AmountExceedsOrderError(PaymentError):
-    pass
-
-
-class InvalidPaymentStateError(PaymentError):
-    pass
-
-
-class InvalidPaymentTypeError(PaymentError):
-    pass
-
-
-class BankDataMismatchError(PaymentError):
-    pass
 
 
 class PaymentServices(BaseService):

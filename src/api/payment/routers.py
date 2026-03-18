@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Path
 
-from src.api.bank_client import BankApiError, BankPaymentNotFoundError
+from src.api.bank_client_exceptions import BankApiError, BankPaymentNotFoundError
 from src.api.payment.services import (
     BankDataMismatchError,
     InvalidPaymentStateError,

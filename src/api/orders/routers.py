@@ -1,7 +1,7 @@
 from alembic.util import status
 from fastapi import APIRouter, HTTPException, Path
 
-from src.api.bank_client import BankApiError
+from src.api.bank_client_exceptions import BankApiError
 from src.api.orders.services import order_services
 from src.api.payment.services import (
     AmountExceedsOrderError,
